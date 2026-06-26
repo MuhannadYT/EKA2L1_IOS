@@ -116,19 +116,6 @@ only ordinary development signing, **no special `allow-jit` entitlement**.
 
 ---
 
-## Known limitations
-
-- **No JIT by default** on a stock device → CPU‑heavy games are interpreter‑bound (~10–16 fps for the
-  most demanding ones); lighter games hit their cap (often 60). You can **opt into JIT** (Settings → CPU
-  Backend) for more speed on CPU‑heavy games, but that requires a JIT enabler (AltStore/SideStore/StikJIT)
-  at runtime — see
-  [Enabling JIT](#enabling-jit). Setting up the enabler itself is out of scope here.
-- The bundled CRT/xBR upscale shaders are GPU‑heavy and are very slow on the Simulator's software GL
-  (fine on a real device).
-- Running needs a user‑supplied Symbian/N‑Gage ROM or VPL firmware (proprietary; not included).
-
----
-
 ### Compatibility:
 - At the moment the emulator supports:
     - Almost all official N-Gage/N-Gage 2.0 official libraries
