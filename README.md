@@ -1,6 +1,6 @@
 <div class="header">
   <p align="center">
-     <img src="https://i.imgur.com/FasrbKV.png" width="256">
+     <img src="screenshots/ios_app_icon.png" width="256">
      <!-- Margin not working for some reasons! Tried to fix it by searching but not working! Feel free to submit a patch! -->
      &nbsp;
      <!-- Old link: https://femto.pw/rasu.gif -->
@@ -12,18 +12,122 @@
     <a href="https://crowdin.com/project/eka2l1"><img src="https://badges.crowdin.net/eka2l1/localized.svg"></a>
   </p>
 
-  <h3 align="center">Symbian OS/N-Gage emulator, written in C++ 17.</h3>
+  <h3 align="center">An iOS port of the Symbian OS/N-Gage emulator EKA2L1</h3>
 </div>
 
 ---
 
-The emulator *emulates* Symbian OS/N-Gage's kernel, and *reimplement* most of its critical app servers and libraries. 
+The emulator is JIT-less by defualt and works fully without needing a JIT-enabler. However if you want to enable JIT for better performance on CPU heavy titles, then you can enable it under Settings>CPU Backend. [More info here](#cpu-backend-jitless-by-default-jit-optional)
 
-### Download Builds/Artifacts:
+## Features
+- **Full Keyboard and controller support, including navigating though the app list and pause screen**
+- **Native UI with liquid glass**
+- **iPad support**
+- **Ability to install N-Gage games by simply going to "Settings>N-gage"**
+- **iCloud progress sync across Apple devices** (needs a paid apple Developer account, or maybe we can upload it to the App Store someday 🥲) with **the ability to manually download and import a backups**
+- **Joystick key Layout**
+- **Per-game settings like Upscale Shaders and Render Resoltion implemented on iOS**
+- **Gyroscope and haptic passthough support**
+- **Auto scalable keylayouts based on aspect ratio, and more...**
 
-- Builds/Artifacts for Windows, OSX, Linux and Android are provided through Github Actions. Click on the [***Releases***](https://github.com/EKA2L1/EKA2L1/releases/tag/continous) section to get the newest stable build.
 
-    - **Note:** There's no official maintainer for OSX and Linux versions of the emulator. Please report to the developers through issues if versions for these OSes are not working.
+### Installing (no build required, easiest)
+1. Download **`EKA2L1.ipa`** from the [Releases section](https://github.com/MuhannadYT/EKA2L1_IOS/releases)
+2. Sideload it with a tool that signs apps onto your device:
+   - **[SideStore](https://sidestore.io/)** or **[AltStore](https://altstore.io/)** — import the
+     `.ipa`; it re‑signs and installs it for your Apple ID. (This is the usual route.)
+   - or any other sideloading/signing tool you already use.
+   - Note: If using a websigner, enable "Match provisioning identifier" to fix file selection.
+   - Thats it! If you need help installing a device and games, checkout [Quick start](https://eka2l1.github.io/quickstart/basic/installdevice/), [Important Links in the Wiki](https://eka2l1.miraheze.org/wiki/Important_Links),
+For iOS questions see [Q&A](#Q&A).
+
+
+### Screenshots (running on iOS)
+
+N-Gage (5530)                                                   |  Bounce Boing Voyage                                                   
+:--------------------------------------------------------------:|:-------------------------------------------------------------:
+![N-Gage](screenshots/iOS/N-Gage.PNG)                           | ![Bounce Boing Voyage](screenshots/iOS/Bounce_Boing_Voyage.PNG)  
+
+The Big Roll in Paradise                                 | Angry Birds Seasons       
+:-------------------------------------------------------:|:-----------------------------------------------------------------:
+![BigRoll](screenshots/iOS/Big_Roll.PNG)                 | ![Angry Birds Seasons](screenshots/iOS/Angry_Birds.PNG)
+
+### Q&A:
+- How can I install a N-Gage Game?
+  - Go to: Settings>N-Gage, and if you have a .n-gage file select it. The app will automatically copy it over. If you need more information check [How To Play N-Gage 2.0 Games - Wiki](https://eka2l1.miraheze.org/wiki/How_To_Play_N-Gage_2.0_Games)
+- How can I change a device's langauge?
+  - Click on "Devices", select your device, then select "Language".
+- I'm getting a lot of micro cuts in a game, how can I fix that?
+  - try closing and opening the game again, if this also doesn't work, you can try enabling jit.
+- How can I enable JIT?
+  - First, you must have a JIT enabler like, AltStore / SideStore / StikJIT, or a debugger. You can turn on JIT by going to Settings>CPU Backend>JIT. 
+
+## Building from source
+
+Requirements: **macOS** with full **Xcode** (the Liquid‑Glass app icon needs **Xcode 26+**) and
+**CMake 3.x** (`build_ios.sh` fetches 3.31.6 for you).
+
+```sh
+git clone --recursive https://github.com/MuhannadYT/EKA2L1_IOS EKA2L1      # --recursive: the core pulls ~35 submodules
+cd EKA2L1
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+```
+
+### Simulator
+```sh
+./build_ios.sh                 # configures + builds build-ios/ for the iphonesimulator SDK
+# install + launch on a booted simulator:
+xcrun simctl install booted build-ios/src/emu/ios/eka2l1.app
+xcrun simctl launch  booted com.eka2l1.emulator
+```
+
+### Real device - building and installing it on your iPhone/iPad
+The device build targets the `iphoneos` SDK and **defaults to the `dyncom` interpreter**, so it needs
+only ordinary development signing, **no special `allow-jit` entitlement**.
+
+1. **Cross‑compile FFmpeg for the device** (one‑time):
+   ```sh
+   ( cd src/external/ffmpeg && ./build-ios-device.sh )
+   ```
+2. **Configure + build** the app (use the CMake 3.x that `build_ios.sh` cached under
+   `~/Library/Caches/eka2l1-ios/…`):
+   ```sh
+   cmake -S . -B build-ios-device -G Ninja \
+       -DCMAKE_SYSTEM_NAME=iOS \
+       -DCMAKE_OSX_SYSROOT=iphoneos \
+       -DCMAKE_OSX_ARCHITECTURES=arm64 \
+       -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+       -DCMAKE_BUILD_TYPE=RelWithDebInfo
+   cmake --build build-ios-device --target eka2l1 -j"$(sysctl -n hw.logicalcpu)"
+   ```
+3. **Install it.** Easiest is to package an unsigned `.ipa` and sideload it exactly like the prebuilt
+   one (SideStore/AltStore signs it for you):
+   ```sh
+   APP=build-ios-device/src/emu/ios/eka2l1.app
+   rm -rf Payload && mkdir Payload && cp -R "$APP" Payload
+   zip -qry EKA2L1.ipa Payload          # then import EKA2L1.ipa into SideStore/AltStore
+   ```
+   Or sign it yourself with a free Apple ID profile and install over USB:
+   ```sh
+   codesign --force --sign <Apple Development cert> --entitlements <ent.plist> --timestamp=none "$APP"
+   xcrun devicectl device install app --device <device-id> "$APP"
+   ```
+   On first launch, trust the developer cert: *Settings → General → VPN & Device Management*.
+
+---
+
+## Known limitations
+
+- **No JIT by default** on a stock device → CPU‑heavy games are interpreter‑bound (~10–16 fps for the
+  most demanding ones); lighter games hit their cap (often 60). You can **opt into JIT** (Settings → CPU
+  Backend) for more speed on CPU‑heavy games, but that requires a JIT enabler (AltStore/SideStore/StikJIT)
+  at runtime — see
+  [Enabling JIT](#enabling-jit). Setting up the enabler itself is out of scope here.
+- The bundled CRT/xBR upscale shaders are GPU‑heavy and are very slow on the Simulator's software GL
+  (fine on a real device).
+- Running needs a user‑supplied Symbian/N‑Gage ROM or VPL firmware (proprietary; not included).
+
+---
 
 ### Compatibility:
 - At the moment the emulator supports:
@@ -37,19 +141,9 @@ The emulator *emulates* Symbian OS/N-Gage's kernel, and *reimplement* most of it
 
 For more information, discussion and support, please visit these links:
 
-- [**Homepage**](https://12l1.com/)
+- [**Homepage**](https://eka2l1.github.io/)
 - [**Emulator Wiki**](https://eka2l1.miraheze.org/wiki/Main_Page)
 - [**Discord server**](https://discord.gg/5Bm5SJ9)
-
-### Screenshots
-
-Calculator (5530)                                               |  High Seize                                                   |          Dirk Dagger
-:--------------------------------------------------------------:|:-------------------------------------------------------------:|:-----------------------------------------------:
-![calculator](screenshots/0.0.8/screenshot_008_calculator.jpg)  | ![highseize](screenshots/0.0.8/screenshot_008_highseize.jpg)  | ![dirkdagger1](screenshots/0.0.8/screenshot_008_dirkdagger1.jpg)
-
-The Big Roll in Paradise                                 | Mega Monster       
-:-------------------------------------------------------:|:-----------------------------------------------------------------:
-![BigRoll](screenshots/0.0.8/screenshot_008_bigroll.jpg) | ![MegaMonster](screenshots/0.0.8/screenshot_008_megamonster.jpg)
 
 ### Donations
 
@@ -57,9 +151,9 @@ From 2022, developing the emulator has shifted to become a part-time hobby and s
 
 Still, if you feel like our work has benefited you much and you want to support or give us some cheers, feel free to donate to two developers that maintain the PC/Android version by visiting the **Sponsor this project** section of the Github page.
 
-Visit this [link](https://12l1.com/quickstart/donation/) for more information.
+Visit this [link](https://eka2l1.github.io/quickstart/donation/) for more information.
 
   -------------
  *GIFs are provided by [**Stranno**](https://www.youtube.com/user/9esferas1)!*
  
- *Logo is designed and drawn by dmolina007 and Frenesi!*
+ *Logo is designed and drawn by dmolina007 and Frenesi ❤️ Modified for iOS by MuhannadYT ❤️*

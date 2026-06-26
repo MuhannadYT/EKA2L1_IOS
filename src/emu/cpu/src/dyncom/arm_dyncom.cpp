@@ -103,6 +103,11 @@ namespace eka2l1::arm {
 
     void dyncom_core::set_cpsr(uint32_t val) {
         state_->Cpsr = val;
+        // Keep the working Thumb field consistent with the saved bit. dyncom refreshes TFlag from Cpsr
+        // via LOAD_NZCVT at its own run entry, but external callers (load_context on a thread switch)
+        // set Cpsr alone — leaving TFlag stale for anything that reads it before dyncom runs (e.g. the
+        // IR core's mode gate). Holding TFlag == Cpsr bit 5 everywhere removes that desync at the source.
+        state_->TFlag = (val >> 5) & 1;
     }
 
     void dyncom_core::set_fpscr(uint32_t val) {
@@ -129,8 +134,12 @@ namespace eka2l1::arm {
     }
 
     void dyncom_core::load_context(const thread_context &ctx) {
-        clear_instruction_cache();
-
+        // NOTE: the decoded-instruction cache is intentionally NOT cleared here. load_context runs
+        // on every thread context switch, but the cache is keyed by virtual address and threads in
+        // the SAME process share identical code mappings — so wiping it on every switch just forces
+        // endless re-translation of the same code (a large interpreter cost in multi-threaded games).
+        // It is cleared instead in flush_tlb(), which the scheduler calls only when the address space
+        // actually changes (a different process); guest code modifications still invalidate via imb_range().
         for (uint8_t i = 0; i < 16; i++) {
             state_->Reg[i] = ctx.cpu_registers[i];
         }
@@ -155,6 +164,11 @@ namespace eka2l1::arm {
 
     void dyncom_core::flush_tlb() {
         mem_cache_.flush();
+
+        // The address space is changing (scheduler calls this only on a process switch), so the
+        // virtual-address-keyed instruction cache may now map to different code — drop it. Same-
+        // process thread switches don't reach here, which is what keeps the cache warm. See load_context.
+        clear_instruction_cache();
     }
 
     void dyncom_core::clear_instruction_cache() {

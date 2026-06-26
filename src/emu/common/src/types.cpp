@@ -74,6 +74,16 @@ int translate_protection(prot cprot) {
         tprot = -1;
     }
 
+#if EKA2L1_PLATFORM(IOS)
+    // iOS enforces W^X: mprotect rejects PROT_EXEC combined with PROT_WRITE (and grants
+    // plain PROT_EXEC only for MAP_JIT regions). The host never executes guest memory
+    // directly — the guest CPU is recompiled by dynarmic into its own JIT pages — so the
+    // emulator's guest memory only needs to be readable/writable. Map "execute" to read.
+    if ((tprot != -1) && (tprot & PROT_EXEC)) {
+        tprot = (tprot & ~PROT_EXEC) | PROT_READ;
+    }
+#endif
+
     return tprot;
 }
 

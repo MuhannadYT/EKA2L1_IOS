@@ -27,6 +27,8 @@
 #include <objbase.h>
 #elif EKA2L1_PLATFORM(ANDROID)
 #include <common/android/audio.h>
+#elif EKA2L1_PLATFORM(IOS)
+#include <drivers/audio/backend/ios/audio_ios.h>
 #endif
 
 namespace eka2l1::drivers {
@@ -55,6 +57,9 @@ namespace eka2l1::drivers {
 
 #ifdef EKA2L1_PLATFORM_ANDROID
         preferred_rate = 48000;
+#elif defined(EKA2L1_PLATFORM_IOS)
+        // No cubeb context on iOS (RemoteIO backend); RemoteIO resamples internally.
+        preferred_rate = 44100;
 #else
         const auto result = cubeb_get_preferred_sample_rate(context_, &preferred_rate);
 
@@ -66,19 +71,51 @@ namespace eka2l1::drivers {
         return preferred_rate;
     }
 
+    // Silent fallback streams used when no audio backend could be initialised (e.g. on
+    // iOS where the bundled cubeb AudioUnit backend is unavailable). They satisfy the
+    // guest audio API as no-ops instead of leaving a null stream that callers deref.
+    namespace {
+        struct null_audio_output_stream : public audio_output_stream {
+            explicit null_audio_output_stream(audio_driver *driver, const std::uint32_t sr, const std::uint8_t ch)
+                : audio_output_stream(driver, sr, ch) {}
+            bool start() override { return true; }
+            bool stop() override { return true; }
+            void pause() override {}
+            bool is_playing() override { return false; }
+            bool is_pausing() override { return false; }
+            bool set_volume(const float) override { return true; }
+            float get_volume() const override { return 0.0f; }
+            bool current_frame_position(std::uint64_t *pos) override { if (pos) { *pos = 0; } return true; }
+        };
+
+        struct null_audio_input_stream : public audio_input_stream {
+            explicit null_audio_input_stream(audio_driver *driver, const std::uint32_t sr, const std::uint8_t ch)
+                : audio_input_stream(driver, sr, ch) {}
+            bool start() override { return true; }
+            bool stop() override { return true; }
+            bool is_recording() override { return false; }
+            bool current_frame_position(std::uint64_t *pos) override { if (pos) { *pos = 0; } return true; }
+        };
+    }
+
     std::unique_ptr<audio_output_stream> cubeb_audio_driver::new_output_stream(const std::uint32_t sample_rate,
         const std::uint8_t channels, data_callback callback) {
+#if EKA2L1_PLATFORM(IOS)
+        // iOS has no working cubeb backend; use the native RemoteIO AudioUnit stream.
+        return make_ios_audio_output_stream(this, sample_rate, channels, std::move(callback));
+#else
         if (!init_) {
-            return nullptr;
+            return std::make_unique<null_audio_output_stream>(this, sample_rate, channels);
         }
 
         return std::make_unique<cubeb_audio_output_stream>(this, context_, sample_rate, channels, callback);
+#endif
     }
 
     std::unique_ptr<audio_input_stream> cubeb_audio_driver::new_input_stream(const std::uint32_t sample_rate,
         const std::uint8_t channels, data_callback callback) {
         if (!init_) {
-            return nullptr;
+            return std::make_unique<null_audio_input_stream>(this, sample_rate, channels);
         }
 
 #if EKA2L1_PLATFORM(ANDROID)

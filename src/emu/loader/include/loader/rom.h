@@ -225,6 +225,11 @@ namespace eka2l1 {
 
             root_dir_list root;
 
+            // Transient guard: total directory entries parsed during load_rom. Used to
+            // abort pathological parses (corrupt / RPKG-dependent ROMs whose directory
+            // entries point at garbage and would otherwise read millions of bogus nodes).
+            std::uint32_t nodes_parsed = 0;
+
             loader::rom_dir *burn_tree_find_dir(const std::string &vir_path);
             std::optional<loader::rom_entry> burn_tree_find_entry(const std::string &vir_path);
         };

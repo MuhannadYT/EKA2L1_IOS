@@ -17,3 +17,11 @@ out
 .metadata
 cmake-build-*
 .idea
+
+# iOS build outputs (contain absolute local paths; rebuilt by build_ios.sh / CI)
+build-ios/
+build-ios-device/
+
+# macOS / packaging junk
+.DS_Store
+*.ipa

@@ -306,7 +306,12 @@ namespace eka2l1 {
         std::unique_ptr<kernel::thread_scheduler> thr_sch_;
 
         ntimer *timing_;
-        memory_system *mem_;
+        // Must be null until install_memory() runs: the constructor calls reset() -> wipeout(),
+        // which reads mem_ (mem_->get_control()) before install_memory() is ever called. Left
+        // uninitialized, a rebuilt kernel_system (device install/switch, Exit Game — all tear the
+        // emulator down then start_locked() a fresh one) reuses the freed block and inherits the
+        // old kernel's dangling mem_ pointer, so wipeout() dereferences freed memory and crashes.
+        memory_system *mem_ = nullptr;
         io_system *io_;
         system *sys_;
         config::state *conf_;

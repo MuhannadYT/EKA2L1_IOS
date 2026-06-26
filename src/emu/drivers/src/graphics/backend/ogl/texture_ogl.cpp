@@ -26,6 +26,7 @@
 
 #include <common/bytes.h>
 #include <common/log.h>
+#include <common/platform.h>
 #include <cassert>
 
 void decompressBlockETC2(unsigned int block_part1, unsigned int block_part2, std::uint8_t *img, int width, int height, int startx, int starty);
@@ -98,6 +99,20 @@ namespace eka2l1::drivers {
         drivers::texture_format converted_internal_format = internal_format;
         drivers::texture_format converted_format = format;
         drivers::texture_data_type converted_data_type = tex_data_type;
+
+#if EKA2L1_PLATFORM(IOS)
+        // OpenGL ES rejects GL_BGR/GL_BGRA as an internal (storage) format. Store as
+        // RGB/RGBA; the *data* format may stay BGRA (GL_BGRA_EXT, provided by
+        // APPLE_texture_format_BGRA8888) so the Symbian screen's colours are preserved.
+        if (converted_internal_format == drivers::texture_format::bgra) {
+            converted_internal_format = drivers::texture_format::rgba;
+        } else if (converted_internal_format == drivers::texture_format::bgr) {
+            converted_internal_format = drivers::texture_format::rgb;
+            if (converted_format == drivers::texture_format::bgr) {
+                converted_format = drivers::texture_format::rgb;
+            }
+        }
+#endif
 
         std::vector<std::uint8_t> converted_data;
         if (tex_data_type == drivers::texture_data_type::compressed) {

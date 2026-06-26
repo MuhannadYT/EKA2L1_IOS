@@ -517,6 +517,28 @@ namespace eka2l1 {
             init();
         }
 
+        // On real Symbian an app's own private path (\Private\<SID>\) on the system drive is
+        // guaranteed to exist for the running app — data caging materialises it. A ROM-bundled app
+        // (e.g. a game pre-installed in a device dump rather than SIS-installed) never had
+        // C:\Private\<SID>\ created, so its very first save there fails with KErrPathNotFound, which
+        // such apps surface to the user as "device memory full - no data was saved". (It appears to
+        // fix itself after exit+relaunch because the app creates the path itself once the first save
+        // fails.) Materialise it up-front when the app opens its file-server session, like the platform.
+        if (ctx.msg->own_thr && system_drive_prop) {
+            if (kernel::process *pr = ctx.msg->own_thr->owning_process()) {
+                if (std::get<2>(pr->get_uid_type()) != 0) {
+                    io_system *io = sys->get_io_system();
+                    const drive_number sys_drive = static_cast<drive_number>(system_drive_prop->get_int());
+                    if (io->get_drive_entry(sys_drive)) {
+                        const std::u16string priv = get_private_path(pr, sys_drive);
+                        if (!io->exist(priv)) {
+                            io->create_directories(priv);
+                        }
+                    }
+                }
+            }
+        }
+
         fs_server_client *cli = create_session<fs_server_client>(&ctx, ctx.msg->own_thr);
         typical_server::connect(ctx);
     }

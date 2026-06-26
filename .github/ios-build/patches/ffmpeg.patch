@@ -1,0 +1,27 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index fb91002306..9c0ddbc639 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -24,6 +24,22 @@ if (WIN32)
+ 				"${CMAKE_CURRENT_SOURCE_DIR}/windows/x86_64/lib/msvc/swresample.lib"
+ 				"Bcrypt.lib")
+ 	endif()
++elseif (EKA2L1_IOS)
++	# iOS (arm64) static libraries, built from source. The Simulator and a real device
++	# need different builds (different platform in the Mach-O load command), so pick by
++	# the active SDK: build-ios-sim.sh -> arm64-simulator, build-ios-device.sh -> arm64-device.
++	if (CMAKE_OSX_SYSROOT MATCHES "iphoneos" OR CMAKE_OSX_SYSROOT MATCHES "iPhoneOS")
++		set(EKA2L1_IOS_FFMPEG_DIR "macos/arm64-device")
++	else()
++		set(EKA2L1_IOS_FFMPEG_DIR "macos/arm64-simulator")
++	endif()
++	target_link_libraries(${FFMPEG_CORE_NAME} INTERFACE
++		"${CMAKE_CURRENT_SOURCE_DIR}/${EKA2L1_IOS_FFMPEG_DIR}/lib/libavformat.a"
++		"${CMAKE_CURRENT_SOURCE_DIR}/${EKA2L1_IOS_FFMPEG_DIR}/lib/libavcodec.a"
++		"${CMAKE_CURRENT_SOURCE_DIR}/${EKA2L1_IOS_FFMPEG_DIR}/lib/libswscale.a"
++		"${CMAKE_CURRENT_SOURCE_DIR}/${EKA2L1_IOS_FFMPEG_DIR}/lib/libavutil.a"
++		"${CMAKE_CURRENT_SOURCE_DIR}/${EKA2L1_IOS_FFMPEG_DIR}/lib/libswresample.a"
++		"z")
+ elseif (APPLE)
+ 	target_link_libraries(${FFMPEG_CORE_NAME} INTERFACE
+ 		"${CMAKE_CURRENT_SOURCE_DIR}/macos/x86_64/lib/libavformat.a"

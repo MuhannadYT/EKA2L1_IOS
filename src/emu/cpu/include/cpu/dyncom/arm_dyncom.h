@@ -13,7 +13,7 @@
 
 namespace eka2l1::arm {
     class dyncom_core final : public core {
-    private:
+    protected:
         arm::exclusive_monitor *monitor_;
         std::unique_ptr<ARMul_State> state_;
         r12l1::tlb mem_cache_;

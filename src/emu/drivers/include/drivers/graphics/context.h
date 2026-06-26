@@ -59,6 +59,17 @@ namespace eka2l1::drivers::graphics {
         virtual bool is_headless() const = 0;
         virtual void update_surface(void *new_surface) {}
 
+        // The framebuffer object that represents the on-screen surface. On most
+        // platforms this is the default framebuffer (0); on iOS/EAGL there is no
+        // window-backed default framebuffer, so the context owns a layer-backed FBO.
+        virtual std::uint32_t swapchain_framebuffer() const {
+            return 0;
+        }
+
+        virtual bool present_blocks_until_vsync() const {
+            return false;
+        }
+
         virtual std::unique_ptr<gl_context> create_shared_context() = 0;
 
         mode gl_mode() const {

@@ -149,6 +149,21 @@ namespace eka2l1::mem::flexible {
     }
 
     flexible_mem_model_process::~flexible_mem_model_process() {
+        // During a full kernel teardown (kernel_system::wipeout — e.g. Exit Game / device switch /
+        // app exit on iOS), the kernel destroys chunks_ BEFORE processes_, so by the time this
+        // process destructor runs the chunks it attached — and their memory objects — have already
+        // been freed. Dereferencing attach.chunk_->mem_obj_ would then touch freed memory
+        // (detach_mapping on a dangling memory_object → the shutdown crash on flexible-model
+        // devices, e.g. exiting Angry Birds on the Nokia N8), and chunk_mngr_->destroy would run on
+        // a dangling chunk. The chunk_manager owns every chunk via unique_ptr and frees them all
+        // when it is destroyed (right after wipeout, in ~system_impl's mem_.reset()), so there is
+        // nothing to do here during shutdown. Mirrors the shutting_down_ guard in
+        // memory_object::decommit. (The multiple memory model has no such teardown access, which is
+        // why only flexible-model devices crashed.)
+        if (control_->shutting_down_) {
+            return;
+        }
+
         control_flexible *fl_control = reinterpret_cast<control_flexible *>(control_);
 
         for (auto &attach: attachs_) {

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  iCloud entitlements for "Progress Sync".
+
+  These are NOT applied by build_ios.sh (the simulator build is ad-hoc signed, and iCloud
+  containers require a real Apple Developer team + a provisioning profile that enables the
+  iCloud capability + a device signed in to iCloud). The Progress Sync code degrades
+  gracefully without them: URLForUbiquityContainerIdentifier returns nil, so iCloud sync
+  reports "iCloud unavailable" while the local backup Download/Import still works.
+
+  To activate iCloud sync, sign the app with a team that has the iCloud capability and pass
+  this file to codesign (codesign --entitlements eka2l1.entitlements ...) or set it as
+  CODE_SIGN_ENTITLEMENTS in an Xcode project, and create the matching iCloud container
+  "iCloud.com.eka2l1.emulator" in the developer portal.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.developer.icloud-container-identifiers</key>
+    <array>
+        <string>iCloud.com.eka2l1.emulator</string>
+    </array>
+    <key>com.apple.developer.ubiquity-container-identifiers</key>
+    <array>
+        <string>iCloud.com.eka2l1.emulator</string>
+    </array>
+    <key>com.apple.developer.icloud-services</key>
+    <array>
+        <string>CloudDocuments</string>
+    </array>
+</dict>
+</plist>

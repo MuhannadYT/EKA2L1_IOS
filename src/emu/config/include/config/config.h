@@ -99,6 +99,14 @@ namespace eka2l1::config {
         bool log_exports{ false };
 
         std::string cpu_backend{ "dynarmic" };
+
+        // iOS only: opt-in JIT. The iOS port defaults to the jitless dyncom interpreter (no
+        // "JIT enabler" needed), but a user who runs the app through a JIT enabler
+        // (AltStore/SideStore/StikJIT, or an attached debugger) can flip this on to use the
+        // dynarmic recompiler for extra performance. Read in the iOS frontend's stage_one;
+        // ignored on every other platform. Additive + backward-compatible.
+        bool ios_enable_jit{ false };
+
         int device{ 0 };
         int language{ -1 };
         int emulator_language{ -1 };

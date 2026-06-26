@@ -68,7 +68,16 @@ namespace eka2l1::common {
 
         if (!res) {
 #else
-        const int result = mprotect(ptr, size, translate_protection(commit_prot));
+        // The host page may be larger than the emulated guest page (16 KiB on arm64
+        // iOS/macOS vs the 4 KiB guest page). mprotect needs host-page-aligned regions,
+        // so round outward to host page boundaries. Over-committing neighbouring host
+        // bytes is harmless: guest visibility is still governed by the guest page tables.
+        const std::size_t host_ps = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+        const std::uintptr_t raw = reinterpret_cast<std::uintptr_t>(ptr);
+        const std::uintptr_t aligned = raw & ~(static_cast<std::uintptr_t>(host_ps) - 1);
+        const std::size_t total = ((raw + size - aligned) + host_ps - 1) & ~(host_ps - 1);
+
+        const int result = mprotect(reinterpret_cast<void *>(aligned), total, translate_protection(commit_prot));
 
         if (result == -1) {
 #endif
@@ -83,14 +92,32 @@ namespace eka2l1::common {
         const auto res = VirtualFree(ptr, size, MEM_DECOMMIT);
 
         if (!res) {
-#else
-        const auto result = mprotect(ptr, size, PROT_NONE);
-
-        if (result == -1) {
-#endif
             return false;
         }
+#else
+        // The host page may be larger than the emulated guest page (16 KiB on arm64
+        // iOS/macOS vs the 4 KiB guest page). mprotect needs host-page-aligned regions.
+        // Unlike commit() (which rounds OUTWARD), decommit must round INWARD — only protect
+        // host pages fully inside the region — because a single host page can hold several
+        // guest pages and protecting a partially-covered one would clobber a neighbouring
+        // guest page that is still committed. If the region doesn't fully cover any host
+        // page (e.g. decommitting one 4 KiB guest page on a 16 KiB host), there is nothing
+        // safe to release; leave it mapped (harmless — the guest page tables hide it).
+        const std::size_t host_ps = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+        const std::uintptr_t raw = reinterpret_cast<std::uintptr_t>(ptr);
+        const std::uintptr_t start = (raw + host_ps - 1) & ~(static_cast<std::uintptr_t>(host_ps) - 1);
+        const std::uintptr_t end = (raw + size) & ~(static_cast<std::uintptr_t>(host_ps) - 1);
 
+        if (end <= start) {
+            return true;
+        }
+
+        const auto result = mprotect(reinterpret_cast<void *>(start), end - start, PROT_NONE);
+
+        if (result == -1) {
+            return false;
+        }
+#endif
         return true;
     }
 

@@ -69,6 +69,15 @@ namespace eka2l1::mem {
 
         bool mem_map_old_; ///< Should we use EKA1 mem map model?
 
+        /// Set by the kernel for the duration of a full teardown (kernel_system::wipeout). While
+        /// true, memory objects skip unmapping decommitted pages from their mappings' address
+        /// spaces / CPU MMUs: during a wipeout the processes (and therefore their address_spaces)
+        /// may already be destroyed, so walking mapping->owner_ would dereference a freed pointer
+        /// (a use-after-free crash on shutdown for flexible-model devices, e.g. Symbian Belle /
+        /// Nokia N8). The unmap is pointless anyway since the CPU + address spaces are being torn
+        /// down. Always false during normal operation, so it does not affect live decommits.
+        bool shutting_down_ = false;
+
     public:
         explicit control_base(arm::exclusive_monitor *monitor, page_table_allocator *alloc,
             config::state *conf, std::size_t psize_bits = 10, const bool mem_map_old = false);

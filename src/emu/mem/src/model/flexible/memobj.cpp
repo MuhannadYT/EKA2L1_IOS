@@ -111,17 +111,23 @@ namespace eka2l1::mem::flexible {
 
         control_flexible *ctrl_fx = reinterpret_cast<control_flexible *>(control_);
 
-        // Unmap decomitted memory from all mappings
-        for (auto &mapping : mappings_) {
-            if (!mapping->unmap(page_offset, total_pages)) {
-                LOG_WARN(MEMORY, "Unable to unmap decommitted memory from a mapping!");
-            }
+        // Unmap decomitted memory from all mappings. Skipped during a full kernel teardown: by then
+        // a process that attached a mapping here may already be gone, so mapping->owner_ would be a
+        // dangling address_space and mapping->unmap()/owner_->id() would dereference freed memory
+        // (the shutdown crash on flexible-model devices, e.g. the Nokia N8). The CPU + address
+        // spaces are being destroyed anyway, so there is nothing meaningful left to unmap.
+        if (!control_->shutting_down_) {
+            for (auto &mapping : mappings_) {
+                if (!mapping->unmap(page_offset, total_pages)) {
+                    LOG_WARN(MEMORY, "Unable to unmap decommitted memory from a mapping!");
+                }
 
-            for (auto &mm : ctrl_fx->mmus_) {
-                if (mapping->owner_->id() == mm->current_addr_space()) {
-                    // Unmap from to CPU right away
-                    mm->unmap_from_cpu(mapping->base_ + start_offset, size_to_decommit);
-                    break;
+                for (auto &mm : ctrl_fx->mmus_) {
+                    if (mapping->owner_->id() == mm->current_addr_space()) {
+                        // Unmap from to CPU right away
+                        mm->unmap_from_cpu(mapping->base_ + start_offset, size_to_decommit);
+                        break;
+                    }
                 }
             }
         }

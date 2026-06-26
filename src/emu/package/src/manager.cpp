@@ -18,6 +18,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <common/algorithm.h>
 #include <common/chunkyseri.h>
 #include <common/cvt.h>
 #include <common/fileutils.h>
@@ -452,13 +453,19 @@ namespace eka2l1 {
                 return false;
             }
 
-            // Delete registry file
-            const std::u16string vpath = get_virtual_registry_regfile(residing_, pkg.uid, pkg.index);
+            // Capture identity before erasing: pkg may alias the map element we are about to
+            // erase, after which reading from it would be a use-after-free.
+            const uid pkg_uid = pkg.uid;
+            const std::int32_t pkg_index = pkg.index;
+
+            // Delete this package's own registry (.reg) file. For a uid with several packages
+            // (augmentations), the shared folder stays; only this index's file is removed.
+            sys->delete_entry(get_virtual_registry_regfile(residing_, pkg_uid, pkg_index));
 
             // Delete associated controllers
             for (std::size_t i = 0; i < pkg.controller_infos.size(); i++) {
-                const std::u16string ctrl_path = add_path(get_virtual_registry_folder(residing_, pkg.uid),
-                    fmt::format(package::CONTROLLER_FILE_FORMAT, pkg.index, pkg.controller_infos[i].offset));
+                const std::u16string ctrl_path = add_path(get_virtual_registry_folder(residing_, pkg_uid),
+                    fmt::format(package::CONTROLLER_FILE_FORMAT, pkg_index, pkg.controller_infos[i].offset));
 
                 sys->delete_entry(ctrl_path);
             }
@@ -466,8 +473,8 @@ namespace eka2l1 {
             // Remove the object
             objects_.erase(pkg_ite);
 
-            if (objects_.find(pkg.uid) == objects_.end()) {
-                std::u16string the_reg_path = get_virtual_registry_folder(residing_, pkg.uid);
+            if (objects_.find(pkg_uid) == objects_.end()) {
+                std::u16string the_reg_path = get_virtual_registry_folder(residing_, pkg_uid);
                 if (std::optional<std::u16string> real_reg_path = sys->get_raw_path(the_reg_path)) {
                     common::delete_folder(common::ucs2_to_utf8(real_reg_path.value()));
                 }
@@ -497,6 +504,21 @@ namespace eka2l1 {
             for (const package::file_description &desc : pkg.file_descriptions) {
                 if ((desc.operation == static_cast<int>(loader::ss_op::install)) || (desc.operation == static_cast<int>(loader::ss_op::null))) {
                     sys->delete_entry(desc.target);
+
+                    // Each installed executable also gets a hash written next to it at
+                    // <drive>:\sys\hash\<name> (used for platform-security and the installer's
+                    // "is this already installed?" check). delete_entry above removes only the
+                    // binary; a left-behind hash makes a later reinstall of the same package
+                    // abort with KErrAlreadyExists (e.g. an N-Gage game uninstalled here then
+                    // re-installed by the guest's own installer). Remove the matching hash too.
+                    const std::u16string lowered = common::lowercase_ucs2_string(desc.target);
+                    const std::u16string bin_dir = u"\\sys\\bin\\";
+                    const std::size_t bin_pos = lowered.find(bin_dir);
+                    if (bin_pos != std::u16string::npos) {
+                        const std::u16string hash_path = desc.target.substr(0, bin_pos) +
+                            u"\\sys\\hash\\" + desc.target.substr(bin_pos + bin_dir.size());
+                        sys->delete_entry(hash_path);
+                    }
                 }
             }
 

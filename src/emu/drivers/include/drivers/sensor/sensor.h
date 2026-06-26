@@ -205,6 +205,10 @@ namespace eka2l1::drivers {
 
     class sensor_driver {
     public:
+        // The frontend owns this through a unique_ptr<sensor_driver>, so the destructor must be
+        // virtual or a backend's teardown (e.g. the iOS CoreMotion cleanup) would never run.
+        virtual ~sensor_driver() = default;
+
         virtual std::vector<sensor_info> queries_active_sensor(const sensor_info &search_info) = 0;
         virtual std::unique_ptr<sensor> new_sensor_controller(const std::uint32_t id) = 0;
 
@@ -222,4 +226,10 @@ namespace eka2l1::drivers {
 
         static std::unique_ptr<sensor_driver> instantiate();
     };
+
+    // "Gyroscope passthrough" gate (iOS): when disabled, the iOS CoreMotion backend feeds no real
+    // sensor data (behaves like the null stub), so games get no tilt input. Default enabled. The
+    // frontend flips this per-game. No effect on other platforms' backends.
+    void set_sensor_passthrough_enabled(bool enabled);
+    bool sensor_passthrough_enabled();
 }

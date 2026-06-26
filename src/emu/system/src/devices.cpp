@@ -220,6 +220,18 @@ namespace eka2l1 {
             }
 
             add_new_device(firmcode, model, manufacturer, ver, machine_uid);
+
+            // Restore this device's chosen system language (added after add_new_device, which
+            // only derives the ROM default). Optional key — older devices.yml files omit it.
+            int chosen_language = -1;
+            try {
+                chosen_language = device_node.second["language"].as<int>();
+            } catch (YAML::Exception exception) {
+                chosen_language = -1;
+            }
+            if (device *added = get(firmcode)) {
+                added->language = chosen_language;
+            }
         }
 
         // Save any additions we add it during deserialize
@@ -239,6 +251,7 @@ namespace eka2l1 {
             emitter << YAML::Key << "firmcode" << YAML::Value << device.firmware_code;
             emitter << YAML::Key << "model" << YAML::Value << device.model;
             emitter << YAML::Key << "machine-uid" << YAML::Value << device.machine_uid;
+            emitter << YAML::Key << "language" << YAML::Value << device.language;
 
             emitter << YAML::EndMap;
         }

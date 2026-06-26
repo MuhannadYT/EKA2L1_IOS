@@ -91,12 +91,12 @@
 
 #include <TargetConditionals.h>
 
-#if TARGET_OS_MAC
-#define EKA2L1_PLATFORM_MACOS 1
-#else
-#if TARGET_OS_IPHONE
+// NOTE: TARGET_OS_MAC is 1 on *all* Apple platforms (including iOS), so it must
+// not be used to distinguish macOS from iOS. Check the iPhone/simulator flags first.
+#if TARGET_OS_IOS || TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
 #define EKA2L1_PLATFORM_IOS 1
-#endif
+#else
+#define EKA2L1_PLATFORM_MACOS 1
 #endif
 #endif
 

@@ -83,7 +83,23 @@ add_library(drivers
         src/video/backend/ffmpeg/video_player_ffmpeg.cpp
         src/video/video.cpp
         ${DRIVERS_VULKAN_SRC})
-if (NOT ANDROID)
+if (EKA2L1_IOS)
+    # iOS: no SDL2 and no Android JNI backends. The window, touch input and (lack of)
+    # game controller are provided by the UIKit frontend; the camera uses the null backend
+    # already compiled into the main source list. The accelerometer ("gyroscope") is backed
+    # by a native CoreMotion sensor backend, and the guest's vibration requests are passed
+    # through to the Taptic Engine via a CoreHaptics backend (the rest of the sensors stay stubs).
+    target_sources(drivers PRIVATE
+        src/sensor/backend/ios/sensor_ios.h
+        src/sensor/backend/ios/sensor_ios.mm
+        include/drivers/hwrm/backend/ios/vibration_ios.h
+        src/hwrm/backend/ios/vibration_ios.mm)
+    # vibrate() allocates short-lived CoreHaptics objects on every guest vibration request, so
+    # compile this backend under ARC (the rest of the drivers layer is MRC). The CFBridging* calls
+    # used to hold the engine/player as void * are correct under ARC.
+    set_source_files_properties(src/hwrm/backend/ios/vibration_ios.mm
+        PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+elseif (NOT ANDROID)
     target_sources(drivers PRIVATE
         include/drivers/input/backend/emu_controller_sdl2.h
         include/drivers/hwrm/backend/vibration_sdl2.h
@@ -118,6 +134,15 @@ if(WIN32)
     )
 
     target_link_libraries(drivers PRIVATE opengl32.lib Mfuuid.lib Propsys.lib)
+elseif(EKA2L1_IOS)
+    # iOS uses an EAGL (OpenGL ES) context. Must be checked before APPLE since iOS
+    # also matches APPLE but has no AppKit/NSOpenGL. Audio uses a native RemoteIO unit.
+    target_sources(drivers PRIVATE
+        src/graphics/backend/context_eagl.h
+        src/graphics/backend/context_eagl.mm
+        include/drivers/audio/backend/ios/audio_ios.h
+        src/audio/backend/ios/audio_ios.mm
+    )
 elseif(APPLE)
     target_sources(drivers PRIVATE
         src/graphics/backend/context_agl.h
@@ -160,8 +185,17 @@ target_include_directories(miniBAE_EMU
     PRIVATE include/drivers/audio/backend/minibae ${MINIBAE_INTERNAL_INCLUDE_DIRS})
 target_link_libraries(miniBAE_EMU PRIVATE common)
 
+# miniBAE is legacy C that assigns integers to pointers in a few places. clang 19+
+# treats int<->pointer conversions as hard errors; relax that for this library only.
+if (CMAKE_C_COMPILER_ID MATCHES "Clang|AppleClang")
+    target_compile_options(miniBAE_EMU PRIVATE -Wno-int-conversion -Wno-error=int-conversion)
+endif()
+
 target_link_libraries(drivers PRIVATE common cubeb ffmpeg glad glm miniBAE_EMU)
-if (NOT ANDROID)
+if (EKA2L1_IOS)
+    target_link_libraries(drivers PRIVATE "-framework OpenGLES" "-framework QuartzCore" "-framework Foundation"
+        "-framework AudioToolbox" "-framework AVFoundation" "-framework CoreMotion" "-framework CoreHaptics")
+elseif (NOT ANDROID)
     target_link_libraries(drivers PRIVATE SDL2)
 else()
     target_link_libraries(drivers PRIVATE android)

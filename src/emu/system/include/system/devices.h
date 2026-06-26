@@ -49,6 +49,10 @@ namespace eka2l1 {
         std::vector<int> languages;
         std::uint32_t machine_uid;
         int default_language_code;
+        // The user's chosen system language for THIS device (Symbian language code), persisted
+        // in devices.yml. -1 = none chosen yet → fall back to default_language_code. Lets each
+        // installed device keep its own language independently of the others.
+        int language = -1;
 
         explicit device(epocver ver, std::string firmware_code, std::string manufacturer, std::string model)
             : ver(ver)

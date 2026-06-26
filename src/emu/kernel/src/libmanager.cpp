@@ -929,6 +929,24 @@ namespace eka2l1::hle {
     }
 
     codeseg_ptr lib_manager::load(const std::u16string &name) {
+        // Fast path: DLLs are singletons by filename in Symbian's loader, and code
+        // segments are registered in the kernel object table under their lowercased
+        // filename. Import resolution calls load() once per import block, so a popular
+        // dependency (euser.dll, avkon.dll, ...) is requested dozens of times while an
+        // app launches. Without this check each request re-searches every drive, re-opens
+        // the file and re-parses the E32 image only for load_as_e32img/load_as_romimg to
+        // discard the work and return the already-loaded segment. Doing the lookup up
+        // front turns those repeats into a single name hash lookup, which dominates app
+        // launch time (file I/O + image parsing) on slow filesystems like the iOS sim.
+        {
+            const std::string seg_name = get_e32_codeseg_name_from_path(name);
+            if (!seg_name.empty()) {
+                if (auto seg = kern_->get_by_name<kernel::codeseg>(seg_name)) {
+                    return seg;
+                }
+            }
+        }
+
         bool is_driver_lib = false;
 
         if (kern_->is_eka1()) {

@@ -21,14 +21,33 @@
 #include <drivers/hwrm/backend/vibration_null.h>
 #ifdef EKA2L1_PLATFORM_ANDROID
 #include <drivers/hwrm/backend/vibration_jdk.h>
+#elif defined(EKA2L1_PLATFORM_IOS)
+#include <drivers/hwrm/backend/ios/vibration_ios.h>
 #else
 #include <drivers/hwrm/backend/vibration_sdl2.h>
 #endif
 
+#include <atomic>
+
 namespace eka2l1::drivers::hwrm {
+    // On by default: the guest's vibration requests pass through to the device's haptics until
+    // the frontend disables it (per-game). Only the iOS CoreHaptics backend consults this.
+    static std::atomic<bool> g_haptic_passthrough_enabled{ true };
+
+    void set_haptic_passthrough_enabled(bool enabled) {
+        g_haptic_passthrough_enabled.store(enabled, std::memory_order_relaxed);
+    }
+
+    bool haptic_passthrough_enabled() {
+        return g_haptic_passthrough_enabled.load(std::memory_order_relaxed);
+    }
+
     std::unique_ptr<vibrator> make_suitable_vibrator() {
 #ifdef EKA2L1_PLATFORM_ANDROID
         return std::make_unique<vibrator_jdk>();
+#elif defined(EKA2L1_PLATFORM_IOS)
+        // Pass the guest's vibration requests through to the device's Taptic Engine (CoreHaptics).
+        return std::make_unique<vibrator_ios>();
 #else
         return std::make_unique<vibrator_sdl2>();
 #endif

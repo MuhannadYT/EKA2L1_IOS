@@ -36,6 +36,12 @@
 #include <unistd.h>
 #endif
 
+// On Darwin (macOS/iOS) `stat` is already 64-bit and the iOS SDK does not provide the
+// explicit stat64 struct/function, so alias them to the regular variants.
+#if EKA2L1_PLATFORM(DARWIN)
+#define stat64 stat
+#endif
+
 #if EKA2L1_PLATFORM(POSIX)
 #include <dirent.h>
 #endif

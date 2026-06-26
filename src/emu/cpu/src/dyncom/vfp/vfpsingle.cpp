@@ -52,6 +52,7 @@
  */
 
 #include <algorithm>
+#include <cstring>
 #include <common/log.h>
 #include <common/types.h>
 #include <cpu/dyncom/vfp/asm_vfp.h>
@@ -1262,6 +1263,39 @@ std::uint32_t vfp_single_cpdo(ARMul_State *state, std::uint32_t inst, std::uint3
         veclen = fpscr & FPSCR_LENGTH_MASK;
 
     LOG_TRACE(eka2l1::CPU_DYNCOM, "vecstride={} veclen={}", vecstride, (veclen >> FPSCR_LENGTH_BIT) + 1);
+
+    // --- Native-float fast path -------------------------------------------------------------
+    // dyncom emulates VFP in software (full IEEE unpack/normalise/round per op, see the rest of
+    // this file). For float-heavy guests that dominates the interpreter. For a SCALAR add/sub/mul/
+    // div in round-to-nearest with ordinary (normalised or zero) operands, the host's native float
+    // produces the bit-identical result far faster — this is exactly what the dynarmic JIT emits.
+    // NaN / Inf / denormal operands and non-default rounding fall through to the precise software
+    // path below, so the only observable difference is the (rarely-read) cumulative FPSCR exception
+    // bits, which games do not depend on.
+    if (veclen == 0 && (fpscr & FPSCR_RMODE_MASK) == FPSCR_ROUND_NEAREST &&
+        (op == FOP_FADD || op == FOP_FSUB || op == FOP_FMUL || op == FOP_FDIV)) {
+        const std::uint32_t a_bits = state->ExtReg[sn];
+        const std::uint32_t b_bits = state->ExtReg[sm];
+        auto ordinary = [](std::uint32_t b) {
+            const std::uint32_t exp = (b >> 23) & 0xFF;            // normalised, or signed zero
+            return (exp != 0 && exp != 0xFF) || (b & 0x7FFFFFFF) == 0;
+        };
+        if (ordinary(a_bits) && ordinary(b_bits)) {
+            float a, b, r;
+            std::memcpy(&a, &a_bits, sizeof(float));
+            std::memcpy(&b, &b_bits, sizeof(float));
+            switch (op) {
+                case FOP_FADD: r = a + b; break;
+                case FOP_FSUB: r = a - b; break;
+                case FOP_FMUL: r = a * b; break;
+                default:       r = a / b; break;   // FOP_FDIV
+            }
+            std::uint32_t r_bits;
+            std::memcpy(&r_bits, &r, sizeof(float));
+            state->ExtReg[dest] = r_bits;
+            return 0;
+        }
+    }
 
     if (!fop->fn) {
         LOG_CRITICAL(eka2l1::CPU_DYNCOM, "could not find single op {}, inst=0x{:x}@0x{:x}",

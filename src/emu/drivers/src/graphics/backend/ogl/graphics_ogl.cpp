@@ -34,6 +34,19 @@
 #include <EGL/egl.h>
 #endif
 
+#if EKA2L1_PLATFORM(IOS)
+#include <dlfcn.h>
+
+namespace {
+    // On iOS the OpenGL ES symbols are statically present in the process (linked
+    // from OpenGLES.framework), so they can be resolved directly from the global
+    // symbol table instead of through an eglGetProcAddress-style loader.
+    static void *ios_gles_loader(const char *name) {
+        return dlsym(RTLD_DEFAULT, name);
+    }
+}
+#endif
+
 #define IMGUI_IMPL_OPENGL_LOADER_GLAD
 
 namespace eka2l1::drivers {
@@ -56,6 +69,11 @@ namespace eka2l1::drivers {
             case graphics::gl_context::mode::opengl_es: {
 #if EKA2L1_PLATFORM(ANDROID)
                 if (!gladLoadGLES2Loader((GLADloadproc) eglGetProcAddress)) {
+                    LOG_CRITICAL(DRIVER_GRAPHICS, "gladLoadGLES2Loader() failed");
+                    return;
+                }
+#elif EKA2L1_PLATFORM(IOS)
+                if (!gladLoadGLES2Loader((GLADloadproc) ios_gles_loader)) {
                     LOG_CRITICAL(DRIVER_GRAPHICS, "gladLoadGLES2Loader() failed");
                     return;
                 }
@@ -427,7 +445,7 @@ namespace eka2l1::drivers {
             new_surface_size_ = { -1, -1 };
         }
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, context_->swapchain_framebuffer());
     }
 
     void ogl_graphics_driver::update_surface(void *new_surface_set) {
@@ -1214,7 +1232,7 @@ namespace eka2l1::drivers {
         }
 
         if (clear_bits & draw_buffer_bit_depth_buffer) {
-#ifdef EKA2L1_PLATFORM_ANDROID
+#if defined(EKA2L1_PLATFORM_ANDROID) || defined(EKA2L1_PLATFORM_IOS)
             glClearDepthf(color_to_clear[4]);
 #else
             glClearDepth(color_to_clear[4]);
@@ -1598,7 +1616,7 @@ namespace eka2l1::drivers {
         drivers::framebuffer_bind_type bind_type = static_cast<drivers::framebuffer_bind_type>(cmd.data_[1]);
 
         if (h == 0) {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glBindFramebuffer(GL_FRAMEBUFFER, context_->swapchain_framebuffer());
             return;
         }
 
@@ -1638,7 +1656,7 @@ namespace eka2l1::drivers {
         unpack_u64_to_2u32(cmd.data_[3], width, height);
 
         glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &last_read_fb);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, fb ? fb->get_fbo() : 0);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, fb ? fb->get_fbo() : context_->swapchain_framebuffer());
         glReadPixels(x, y, width, height, format, type, reinterpret_cast<std::uint64_t*>(cmd.data_[4]));
         glBindFramebuffer(GL_READ_FRAMEBUFFER, last_read_fb);
     }
@@ -1727,6 +1745,14 @@ namespace eka2l1::drivers {
     }
 
     void ogl_graphics_driver::display(command &cmd) {
+        if (context_->present_blocks_until_vsync()) {
+            finish(cmd.status_, 0);
+            context_->swap_buffers();
+
+            disp_hook_();
+            return;
+        }
+
         context_->swap_buffers();
 
         disp_hook_();

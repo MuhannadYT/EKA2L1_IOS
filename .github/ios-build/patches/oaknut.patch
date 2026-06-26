@@ -1,0 +1,74 @@
+diff --git a/externals/oaknut/include/oaknut/code_block.hpp b/externals/oaknut/include/oaknut/code_block.hpp
+index bfa87d96..9ac7597b 100644
+--- a/externals/oaknut/include/oaknut/code_block.hpp
++++ b/externals/oaknut/include/oaknut/code_block.hpp
+@@ -17,12 +17,30 @@
+ #    include <pthread.h>
+ #    include <sys/mman.h>
+ #    include <unistd.h>
++#    if TARGET_OS_SIMULATOR
++#        include <dlfcn.h>
++#    endif
+ #else
+ #    include <sys/mman.h>
+ #endif
+ 
+ namespace oaknut {
+ 
++#if defined(__APPLE__) && TARGET_OS_SIMULATOR
++// The iOS SDK marks pthread_jit_write_protect_np() unavailable for iOS, so calling it
++// directly is a hard compile error even when targeting the Simulator. The symbol does
++// exist in the Simulator's libsystem (shared with the Apple-Silicon host) and works, so
++// resolve it once via dlsym to flip the per-thread W^X state without a syscall.
++inline void oaknut_jit_write_protect(int enabled)
++{
++    using fn_t = void (*)(int);
++    static fn_t fn = reinterpret_cast<fn_t>(dlsym(RTLD_DEFAULT, "pthread_jit_write_protect_np"));
++    if (fn) {
++        fn(enabled);
++    }
++}
++#endif
++
+ class CodeBlock {
+ public:
+     explicit CodeBlock(std::size_t size)
+@@ -31,9 +49,15 @@ public:
+ #if defined(_WIN32)
+         m_memory = (std::uint32_t*)VirtualAlloc(nullptr, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+ #elif defined(__APPLE__)
+-#    if TARGET_OS_IPHONE
++#    if TARGET_OS_IPHONE && !TARGET_OS_SIMULATOR
++        // Real iOS/tvOS devices: MAP_JIT requires the dynamic-codesigning entitlement that
++        // ordinary apps can't get, so use a plain RX mapping and toggle W^X with mprotect.
+         m_memory = (std::uint32_t*)mmap(nullptr, size, PROT_READ | PROT_EXEC, MAP_ANON | MAP_PRIVATE, -1, 0);
+ #    else
++        // macOS *and* the iOS Simulator run on the host Mac and support MAP_JIT together
++        // with the cheap per-thread pthread_jit_write_protect_np() W^X toggle. The Simulator
++        // was previously lumped in with real devices and paid a whole-cache mprotect() on
++        // every emitted block (two syscalls per JIT block), which dominated app launch time.
+         m_memory = (std::uint32_t*)mmap(nullptr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_PRIVATE | MAP_JIT, -1, 0);
+ #    endif
+ #elif defined(__NetBSD__)
+@@ -72,7 +96,9 @@ public:
+ 
+     void protect()
+     {
+-#if defined(__APPLE__) && !TARGET_OS_IPHONE
++#if defined(__APPLE__) && TARGET_OS_SIMULATOR
++        oaknut_jit_write_protect(1);
++#elif defined(__APPLE__) && !TARGET_OS_IPHONE
+         pthread_jit_write_protect_np(1);
+ #elif defined(__APPLE__) || defined(__NetBSD__) || defined(__OpenBSD__)
+         mprotect(m_memory, m_size, PROT_READ | PROT_EXEC);
+@@ -81,7 +107,9 @@ public:
+ 
+     void unprotect()
+     {
+-#if defined(__APPLE__) && !TARGET_OS_IPHONE
++#if defined(__APPLE__) && TARGET_OS_SIMULATOR
++        oaknut_jit_write_protect(0);
++#elif defined(__APPLE__) && !TARGET_OS_IPHONE
+         pthread_jit_write_protect_np(0);
+ #elif defined(__APPLE__) || defined(__NetBSD__) || defined(__OpenBSD__)
+         mprotect(m_memory, m_size, PROT_READ | PROT_WRITE);

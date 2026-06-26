@@ -101,6 +101,16 @@ namespace eka2l1 {
 
     void kernel_system::wipeout() {
         wiping_ = true;
+
+        // Tell the memory model we are tearing everything down. Chunk/memory-object destruction
+        // below must not try to unmap from process address spaces — those processes are destroyed
+        // in this same pass, so their address_spaces may already be gone (a use-after-free on the
+        // flexible memory model, e.g. Symbian Belle / Nokia N8 devices). Cleared at the end so a
+        // reset()-driven reboot resumes normal decommit behaviour.
+        if (mem_ && mem_->get_control()) {
+            mem_->get_control()->shutting_down_ = true;
+        }
+
         timing_->remove_event(realtime_ipc_signal_evt_);
 
         if (rom_map_) {
@@ -157,6 +167,11 @@ namespace eka2l1 {
             btrace_inst_->close_trace_session();
 
         cpu_->clear_instruction_cache();
+
+        if (mem_ && mem_->get_control()) {
+            mem_->get_control()->shutting_down_ = false;
+        }
+
         wiping_ = false;
     }
 

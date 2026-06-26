@@ -44,6 +44,15 @@ namespace eka2l1::mem::flexible {
                 mmu->cpu_->imb_range(fixed_mapping_->base_, max_size_);
             }
         }
+
+        // For an address-shared chunk, do_create() registers fixed_mapping_.get() in
+        // mem_obj_->mappings_, and ~memory_object()->decommit() walks that list (dereferencing
+        // mapping->owner_->id()). fixed_mapping_ is declared AFTER mem_obj_, so the implicit
+        // member-destruction order would free it FIRST, leaving a dangling mapping in mappings_ →
+        // crash in decommit. Destroy mem_obj_ now, while fixed_mapping_ is still alive, so the walk
+        // is valid. (The shutting_down_ fast path in decommit skips the walk, which is why a full
+        // Exit-Game teardown never hit this — only a process killed during normal play did.)
+        mem_obj_.reset();
     }
 
     int flexible_mem_model_chunk::do_create(const mem_model_chunk_creation_info &create_info) {

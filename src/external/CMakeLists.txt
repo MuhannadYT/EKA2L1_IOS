@@ -31,6 +31,11 @@ add_subdirectory(fmt)
 add_library(fmt::fmt ALIAS fmt)
 set (fmt_DIR fmt)
 
+# AppleClang 21 (Xcode 26) is stricter about consteval format-string checking than
+# fmt 10.2.2 supports, which breaks fmt's own sources, spdlog and downstream users.
+# Disable compile-time consteval checks so the bundled fmt builds with modern clang.
+target_compile_definitions(fmt PUBLIC FMT_USE_CONSTEVAL=0)
+
 set(CMAKE_REQUIRED_QUIET 1)
 
 if (MSVC)
@@ -227,7 +232,8 @@ set (TSF_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR} CACHE INTERNAL "TSF include path")
 
 # SDL2
 # Can't believe in 2022 the official CMake can't still ship a FindSDL2 with the program...
-if (NOT ANDROID)
+# Android and iOS do not use SDL2 (their frontends own windowing/input).
+if (NOT ANDROID AND NOT EKA2L1_IOS)
     set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/sdl2-cmake-scripts")
 
     if(APPLE)

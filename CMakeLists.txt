@@ -17,6 +17,27 @@ option(EKA2L1_ENABLE_DISCORD_RICH_PRESENCE "Enable support for Discord Rich Pres
 set (CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 set (ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
+# Normalize iOS detection (CMake itself only sets APPLE + CMAKE_SYSTEM_NAME).
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set (EKA2L1_IOS TRUE)
+    message("Configuring EKA2L1 for iOS")
+
+    # The iOS frontend is a self-contained app; desktop-only pieces and the
+    # LuaJIT/Python scripting engine are not built (JIT codegen libs + Qt UI
+    # do not apply on iOS).
+    set (EKA2L1_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+    set (EKA2L1_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set (EKA2L1_ENABLE_SCRIPTING_ABILITY OFF CACHE BOOL "" FORCE)
+    set (EKA2L1_BUILD_VULKAN_BACKEND OFF CACHE BOOL "" FORCE)
+
+    # The very new libc++ shipped with Xcode 26 removed the C++98 std::unary_function /
+    # std::binary_function helpers that the bundled ext-boost (used by dynarmic) still
+    # relies on. Re-enable them and steer boost onto its non-deprecated code path.
+    add_compile_definitions(
+        _LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION
+        _HAS_AUTO_PTR_ETC=0)
+endif()
+
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
     set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")

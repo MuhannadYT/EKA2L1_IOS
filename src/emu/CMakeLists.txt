@@ -12,7 +12,11 @@ endif ()
 # Many of our code are optimized to utilize offsetof.
 # But it complains a lot with non-POD type, that's not what we want, so disable the warn flag.
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang|GNU")
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.14" CACHE STRING "Minimum OS X version to target for deployment" FORCE)
+    # Only pin the macOS deployment target on macOS; on iOS the deployment target
+    # is supplied by the iOS toolchain (CMAKE_OSX_DEPLOYMENT_TARGET stays an iOS version).
+    if (NOT EKA2L1_IOS)
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.14" CACHE STRING "Minimum OS X version to target for deployment" FORCE)
+    endif ()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-invalid-offsetof")
 endif ()
 
@@ -38,6 +42,8 @@ add_subdirectory(vfs)
 if (ANDROID)
     include_directories(android/app/src/main)
     add_subdirectory(android/app/src/main/cpp)
+elseif (EKA2L1_IOS)
+    add_subdirectory(ios)
 else()
     add_subdirectory(qt)
 endif()

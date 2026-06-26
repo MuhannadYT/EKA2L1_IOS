@@ -1,0 +1,128 @@
+name: iOS IPA
+
+# Builds an UNSIGNED iOS .ipa of the EKA2L1 iOS port that users can sideload
+# (SideStore / AltStore / StikJIT re-sign it on import) and publishes it as a
+# draft GitHub release.
+#
+# Runs on every push to the main branch, EXCEPT when the push only touches
+# Markdown (*.md) files, and can also be triggered by hand.
+#
+# Requirements baked into the steps below:
+#   * CMake 3.x  – CMake 4 cannot configure several of EKA2L1's older submodules,
+#                  so we fetch 3.31.6 (the same version build_ios.sh pins).
+#   * Xcode 26+  – the Liquid-Glass app icon is an Apple Icon Composer ".icon",
+#                  which only `actool` from Xcode 26 onward can compile.
+#   * FFmpeg     – cross-compiled for iphoneos (arm64). Prebuilt static libs are
+#                  committed under src/external/ffmpeg/macos/arm64-device; if they
+#                  are missing the workflow builds them with build-ios-device.sh.
+
+on:
+  push:
+    branches: [master, main]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create the draft release
+
+jobs:
+  build-ipa:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # The iOS port needs four small fixes to upstream submodules that are NOT committed
+      # in their pinned commits (fmt consteval guard, cubeb iOS audio, oaknut W^X, ffmpeg
+      # iOS link rules), plus ffmpeg's iOS cross-compile scripts. They live in
+      # .github/ios-build/ and are injected here so a fresh checkout builds unattended.
+      - name: Apply iOS submodule patches
+        run: |
+          P="$GITHUB_WORKSPACE/.github/ios-build/patches"
+          git -C src/external/cubeb                      apply "$P/cubeb.patch"
+          git -C src/external/fmt                        apply "$P/fmt.patch"
+          git -C src/external/ffmpeg                     apply "$P/ffmpeg.patch"
+          git -C src/external/dynarmic/externals/oaknut  apply "$P/oaknut.patch"
+          cp .github/ios-build/ffmpeg/build-ios-device.sh \
+             .github/ios-build/ffmpeg/build-ios-sim.sh    src/external/ffmpeg/
+          chmod +x src/external/ffmpeg/build-ios-device.sh src/external/ffmpeg/build-ios-sim.sh
+          echo "Patches applied."
+
+      - name: Select newest installed Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$XC" ] || XC=/Applications/Xcode.app
+          echo "Using $XC"
+          sudo xcode-select -s "$XC/Contents/Developer"
+          echo "DEVELOPER_DIR=$XC/Contents/Developer" >> "$GITHUB_ENV"
+          xcodebuild -version
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - name: Install CMake 3.31.6 (CMake 4 can't configure old submodules)
+        run: |
+          curl -fsSL -o cmake.tar.gz \
+            https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-macos-universal.tar.gz
+          tar xzf cmake.tar.gz
+          echo "$PWD/cmake-3.31.6-macos-universal/CMake.app/Contents/bin" >> "$GITHUB_PATH"
+
+      - name: Build FFmpeg for iphoneos (only if the prebuilt libs are absent)
+        run: |
+          if [ ! -f src/external/ffmpeg/macos/arm64-device/lib/libavcodec.a ]; then
+            echo "Prebuilt device FFmpeg not found – cross-compiling…"
+            ( cd src/external/ffmpeg && ./build-ios-device.sh )
+          else
+            echo "Using committed prebuilt FFmpeg device libs."
+          fi
+
+      - name: Configure (iphoneos / arm64)
+        run: |
+          cmake -S . -B build-ios-device -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build the app
+        run: cmake --build build-ios-device --target eka2l1 -j"$(sysctl -n hw.logicalcpu)"
+
+      - name: Package unsigned IPA
+        run: |
+          APP="build-ios-device/src/emu/ios/eka2l1.app"
+          if [ ! -d "$APP" ]; then echo "::error::built .app not found at $APP"; exit 1; fi
+          rm -rf payload-staging EKA2L1.ipa
+          mkdir -p payload-staging/Payload
+          cp -R "$APP" payload-staging/Payload/
+          # Strip any stray code signature so sideload tools sign cleanly.
+          rm -rf payload-staging/Payload/eka2l1.app/_CodeSignature
+          ( cd payload-staging && zip -qr ../EKA2L1.ipa Payload )
+          ls -lh EKA2L1.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EKA2L1-iOS-ipa
+          path: EKA2L1.ipa
+          if-no-files-found: error
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ios-build-${{ github.run_number }}
+          name: EKA2L1 iOS — build ${{ github.run_number }}
+          body: |
+            Automated **unsigned** iOS build of the EKA2L1 iOS port.
+
+            - Commit: ${{ github.sha }}
+            - CPU backend: jitless `dyncom` interpreter by default (no JIT enabler needed).
+
+            **How to install:** import `EKA2L1.ipa` into SideStore / AltStore (or sign it with
+            your own tool). The app is unsigned, so a sideload tool must re-sign it for your device.
+          files: EKA2L1.ipa

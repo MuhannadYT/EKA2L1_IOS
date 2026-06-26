@@ -47,4 +47,10 @@ namespace eka2l1::drivers::hwrm {
     };
 
     std::unique_ptr<vibrator> make_suitable_vibrator();
+
+    // "Haptic passthrough" gate (iOS): when disabled, the iOS CoreHaptics backend ignores the
+    // guest's vibration requests (behaves like the null stub), so games can't buzz the device.
+    // Default enabled. The frontend flips this per-game. No effect on other platforms' backends.
+    void set_haptic_passthrough_enabled(bool enabled);
+    bool haptic_passthrough_enabled();
 };

@@ -616,6 +616,12 @@ namespace eka2l1 {
         , exit(false) {
 #if EKA2L1_ARCH(ARM)
         cpu_type = arm_emulator_type::r12l1;
+#elif EKA2L1_PLATFORM(IOS)
+        // A real iOS device can't run a JIT recompiler without an external "JIT enabler" (a debugger
+        // attach) or a restricted entitlement ordinary sideloaded apps can't get. So we run an
+        // interpreter (no enabler required) — the STABLE dyncom (Citra-derived) one. Users who can
+        // grant the app JIT permission can opt into the dynarmic recompiler at runtime (Settings).
+        cpu_type = arm_emulator_type::dyncom;
 #else
         cpu_type = /*arm::string_to_arm_emulator_type(conf_->cpu_backend);*/ arm_emulator_type::dynarmic;
 #endif

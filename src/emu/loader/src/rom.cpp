@@ -163,9 +163,19 @@ namespace eka2l1::loader {
         return header;
     }
 
-    static rom_dir read_rom_dir(rom &romf, common::ro_stream *stream);
+    // Symbian ROM directory trees are shallow; this bounds how deep the recursive
+    // reader will go so that a malformed or RPKG-dependent ROM image (whose directory
+    // entries can point at garbage/cyclic offsets) cannot recurse until the stack
+    // overflows. Hitting the limit makes load_rom fail gracefully instead of crashing.
+    static constexpr int MAX_ROM_DIR_DEPTH = 256;
 
-    static rom_entry read_rom_entry(rom &romf, rom_dir *mother, common::ro_stream *stream) {
+    // No real Symbian ROM has anywhere near this many directory entries; exceeding it
+    // means the parse has run off into garbage, so bail out of the whole load_rom.
+    static constexpr std::uint32_t MAX_ROM_NODES = 1000000;
+
+    static rom_dir read_rom_dir(rom &romf, common::ro_stream *stream, int depth = 0);
+
+    static rom_entry read_rom_entry(rom &romf, rom_dir *mother, common::ro_stream *stream, int depth = 0) {
         rom_entry entry;
 
         std::size_t readed_size = 0;
@@ -176,7 +186,9 @@ namespace eka2l1::loader {
         readed_size += stream->read(&entry.name_len, 1);
 
         if (readed_size != 10) {
-            LOG_ERROR(LOADER, "Can't read entry header!");
+            // Common while reading a truncated / RPKG-dependent ROM; keep it quiet
+            // (trace) since it can fire millions of times on malformed directory data.
+            LOG_TRACE(LOADER, "Can't read entry header!");
             return entry;
         }
 
@@ -185,14 +197,14 @@ namespace eka2l1::loader {
         entry.name.resize(entry.name_len);
 
         if (stream->read(entry.name.data(), 2 * entry.name_len) != (2 * entry.name_len)) {
-            LOG_ERROR(LOADER, "Can't read entry name!");
+            LOG_TRACE(LOADER, "Can't read entry name!");
         }
 
         if (entry.attrib & static_cast<int>(file_attrib::dir)) {
             const auto crr_pos = stream->tell();
             stream->seek(rom_to_offset(romf.header.rom_base, entry.address_lin), common::seek_where::beg);
 
-            entry.dir = std::make_optional<rom_dir>(read_rom_dir(romf, stream));
+            entry.dir = std::make_optional<rom_dir>(read_rom_dir(romf, stream, depth + 1));
             entry.dir->name = entry.name;
             mother->subdirs.push_back(entry.dir.value());
 
@@ -202,21 +214,38 @@ namespace eka2l1::loader {
         return entry;
     }
 
-    static rom_dir read_rom_dir(rom &romf, common::ro_stream *stream) {
+    static rom_dir read_rom_dir(rom &romf, common::ro_stream *stream, int depth) {
         rom_dir dir;
+
+        if ((depth > MAX_ROM_DIR_DEPTH) || (romf.nodes_parsed > MAX_ROM_NODES)) {
+            LOG_TRACE(LOADER, "ROM directory parse limit hit; aborting (corrupt ROM or missing RPKG?)");
+            return dir;
+        }
 
         const auto old_off = stream->tell();
 
         if (stream->read(&dir.size, 4) != 4) {
-            LOG_ERROR(LOADER, "Can't read directory size!");
+            LOG_TRACE(LOADER, "Can't read directory size!");
             return dir;
         }
 
         while (stream->tell() - old_off < dir.size) {
-            dir.entries.push_back(read_rom_entry(romf, &dir, stream));
+            const auto entry_pos = stream->tell();
+
+            if (++romf.nodes_parsed > MAX_ROM_NODES) {
+                break;
+            }
+
+            dir.entries.push_back(read_rom_entry(romf, &dir, stream, depth));
 
             if (stream->tell() % 4 != 0) {
                 stream->seek(2, common::seek_where::cur);
+            }
+
+            // If an entry could not advance the stream (truncated / corrupt ROM, or at
+            // EOF), stop instead of spinning forever on a bogus directory size.
+            if (stream->tell() <= entry_pos) {
+                break;
             }
         }
 
@@ -247,7 +276,7 @@ namespace eka2l1::loader {
         }
 
         stream->seek(rom_to_offset(romf.header.rom_base, rdir.addr_lin), common::seek_where::beg);
-        rdir.dir = read_rom_dir(romf, stream);
+        rdir.dir = read_rom_dir(romf, stream, 0);
 
         return rdir;
     }
