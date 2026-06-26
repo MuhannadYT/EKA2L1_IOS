@@ -17,7 +17,7 @@
 
 ---
 
-The emulator is JIT-less by defualt and works fully without needing a JIT-enabler. However if you want to enable JIT for better performance on CPU heavy titles, then you can enable it under Settings>CPU Backend. [More info here](#cpu-backend-jitless-by-default-jit-optional)
+The emulator is JIT-less by defualt and works fully without needing a JIT-enabler. However if you want to enable JIT for better performance on CPU heavy titles, then you can enable it under Settings>CPU Backend. [More info in Q&A](#QA)
 
 ## Features
 - **Full Keyboard and controller support, including navigating though the app list and pause screen**
@@ -39,7 +39,7 @@ The emulator is JIT-less by defualt and works fully without needing a JIT-enable
    - or any other sideloading/signing tool you already use.
    - Note: If using a websigner, enable "Match provisioning identifier" to fix file selection.
    - Thats it! If you need help installing a device and games, checkout [Quick start](https://eka2l1.github.io/quickstart/basic/installdevice/), [Important Links in the Wiki](https://eka2l1.miraheze.org/wiki/Important_Links),
-For iOS questions see [Q&A](#Q&A).
+For iOS questions see [Q&A](#QA).
 
 
 ### Screenshots (running on iOS)
